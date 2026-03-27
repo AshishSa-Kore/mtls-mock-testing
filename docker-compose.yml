@@ -1,0 +1,73 @@
+# docker-compose.yml
+# =============================================================
+# mTLS + OAuth2 Client Credentials — Separate Instances
+#
+# Each service has its own mTLS termination proxy, simulating
+# the OAuth2 server and API being on different machines.
+#
+# Flow:
+#   Client --[mTLS :8443]--> oauth2-proxy (Caddy) --[HTTP]--> OAuth2 Server
+#   Client --[mTLS :9443]--> api-proxy (Caddy)    --[HTTP]--> Mock API + MCP Server
+#
+# The client must independently present its certificate to each
+# service, just like in a real multi-instance deployment.
+# =============================================================
+
+version: "3.8"
+
+services:
+  # --- OAuth2 instance (simulates a separate machine) ---
+  oauth2-proxy:
+    image: caddy:latest
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./oauth2-proxy/Caddyfile:/etc/caddy/Caddyfile
+      - ./certs:/etc/certs
+    depends_on:
+      - oauth2
+    networks:
+      - oauth2-net
+
+  oauth2:
+    image: ghcr.io/navikt/mock-oauth2-server:2.1.10
+    environment:
+      - SERVER_PORT=8080
+      - JSON_CONFIG_PATH=/config/config.json
+    volumes:
+      - ./oauth2-config:/config
+    networks:
+      - oauth2-net
+      - shared-net   # API needs to reach OAuth2 for JWKS
+
+  # --- API instance (simulates a separate machine) ---
+  api-proxy:
+    image: caddy:latest
+    ports:
+      - "9443:9443"
+    volumes:
+      - ./api-proxy/Caddyfile:/etc/caddy/Caddyfile
+      - ./certs:/etc/certs
+    depends_on:
+      - api
+    networks:
+      - api-net
+
+  api:
+    build: ./mock-api
+    ports:
+      - "3000:3000"
+    environment:
+      - OAUTH2_JWKS_URI=http://oauth2:8080/default/jwks
+      - OAUTH2_ISSUER=http://oauth2:8080/default
+    networks:
+      - api-net
+      - shared-net   # needs to reach OAuth2 for JWKS validation
+
+networks:
+  oauth2-net:
+    driver: bridge
+  api-net:
+    driver: bridge
+  shared-net:
+    driver: bridge

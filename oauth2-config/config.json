@@ -1,0 +1,21 @@
+{
+  "interactiveLogin": false,
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "requestMappings": [
+        {
+          "requestParam": "grant_type",
+          "match": "client_credentials",
+          "claims": {
+            "iss": "http://oauth2:8080/default",
+            "aud": ["mock-api"],
+            "sub": "${clientId}",
+            "scope": "read write",
+            "client_id": "${clientId}"
+          }
+        }
+      ]
+    }
+  ]
+}
